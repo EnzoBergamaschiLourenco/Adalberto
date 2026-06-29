@@ -20,7 +20,7 @@ def decodificar_texto(texto):
 
 def parse_emails(username, password, start_date, end_date):
     # Configuração padrão do IMAP Locaweb
-    IMAP_SERVER = "imap.locaweb.com.br"
+    IMAP_SERVER = "email-ssl.com.br"
     PORT = 993
     
     # Conexão segura SSL
