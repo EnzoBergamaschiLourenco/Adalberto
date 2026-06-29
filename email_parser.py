@@ -2,8 +2,8 @@ import imaplib
 import email
 from email.header import decode_header
 import datetime
-from Pecas import processar_pecas
-from Tubos import processar_tubos
+from pecas import processar_pecas
+from tubos import processar_tubos
 
 def decodificar_texto(texto):
     """Decodifica cabeçalhos de e-mail codificados (MIME)."""
