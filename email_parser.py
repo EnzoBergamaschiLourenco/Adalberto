@@ -9,9 +9,21 @@ import io
 import requests
 import base64
 import pdfplumber
+import easyocr
+import numpy as np
 
 from pecas import processar_pecas
 from tubos import processar_tubos
+
+# Inicializa o Reader do EasyOCR globalmente para não recarregar a cada PDF
+reader = easyocr.Reader(['pt'], gpu=False)
+
+# Configurações de corte herdadas do seu teste.py
+LEFT = 0.60
+TOP = 0.10
+RIGHT = 0.88
+BOTTOM = 0.15
+RESOLUTION = 300
 
 def decodificar_texto(texto):
     """Decodifica cabeçalhos de e-mail codificados (MIME)."""
@@ -27,7 +39,7 @@ def decodificar_texto(texto):
     return "".join(resultado)
 
 def extrair_xmls_dos_pdfs(anexos):
-    """Lê PDFs, extrai a chave de acesso e busca o XML. Retorna (xmls, logs)."""
+    """Lê PDFs, renderiza imagem, aplica OCR na região da chave e busca o XML. Retorna (xmls, logs)."""
     xmls_extraidos = []
     logs_danfe = []
     
@@ -35,37 +47,64 @@ def extrair_xmls_dos_pdfs(anexos):
         if anexo["filename"].lower().endswith(".pdf"):
             log_item = {"arquivo": anexo["filename"], "chave": "Não encontrada", "status": "Não consultado", "sucesso": False}
             try:
+                # Utiliza o pdfplumber a partir dos bytes da memória
                 with pdfplumber.open(io.BytesIO(anexo["content"])) as pdf:
-                    texto_pagina = pdf.pages[0].extract_text()
+                    page = pdf.pages[0]
                     
-                    if texto_pagina:
-                        texto_limpo = texto_pagina.replace(" ", "").replace("\n", "")
-                        match = re.search(r'\b\d{44}\b', texto_limpo)
+                    # 1. Renderiza a página para imagem (Lógica do teste.py)
+                    imagem = page.to_image(resolution=RESOLUTION)
+                    pil = imagem.original.copy()
+                    largura, altura = pil.size
+                    
+                    # 2. Calcula as coordenadas do retângulo de corte
+                    x0 = int(largura * LEFT)
+                    y0 = int(altura * TOP)
+                    x1 = int(largura * RIGHT)
+                    y1 = int(altura * BOTTOM)
+                    
+                    # 3. Recorta a área da imagem contendo a chave
+                    crop = pil.crop((x0, y0, x1, y1))
+                    crop_np = np.array(crop)
+                    
+                    # 4. Executa o OCR na imagem recortada
+                    resultados = reader.readtext(crop_np)
+                    
+                    texto_ocr = ""
+                    for r in resultados:
+                        texto_ocr += " " + r[1]
+                    
+                    # 5. Remove tudo que não for número para isolar a chave
+                    numeros = re.sub(r"\D", "", texto_ocr)
+                    match = re.search(r"\d{44}", numeros)
+                    
+                    if match:
+                        chave = match.group(0)
+                        log_item["chave"] = chave
                         
-                        if match:
-                            chave = match.group(0)
-                            log_item["chave"] = chave
+                        # 6. Realiza a consulta com a chave encontrada via OCR
+                        res = requests.post(
+                            'https://consultadanfe.com/api/v1/consulta',
+                            json={'chave': chave},
+                            headers={'Content-Type': 'application/json'},
+                            timeout=15
+                        )
+                        
+                        log_item["status"] = res.status_code
+                        if res.status_code == 200:
+                            base64_xml = res.text
+                            b64_str = re.sub(r'[^A-Za-z0-9+/]', '', base64_xml)
+                            padding = len(b64_str) % 4
+                            if padding:
+                                b64_str += '=' * (4 - padding)
                             
-                            res = requests.post(
-                                'https://consultadanfe.com/api/v1/consulta',
-                                json={'chave': chave},
-                                headers={'Content-Type': 'application/json'},
-                                timeout=15
-                            )
-                            
-                            log_item["status"] = res.status_code
-                            if res.status_code == 200:
-                                base64_xml = res.text
-                                b64_str = re.sub(r'[^A-Za-z0-9+/]', '', base64_xml)
-                                padding = len(b64_str) % 4
-                                if padding:
-                                    b64_str += '=' * (4 - padding)
-                                
-                                xml_decodificado = base64.b64decode(b64_str).decode('utf-8', errors='ignore')
-                                xmls_extraidos.append(xml_decodificado)
-                                log_item["sucesso"] = True
-                            else:
-                                log_item["erro"] = res.text
+                            xml_decodificado = base64.b64decode(b64_str).decode('utf-8', errors='ignore')
+                            xmls_extraidos.append(xml_decodificado)
+                            log_item["sucesso"] = True
+                        else:
+                            log_item["erro"] = res.text
+                    else:
+                        log_item["status"] = "Chave inválida ou não detectada pelo OCR"
+                        
             except Exception as e:
                 log_item["status"] = "Erro interno"
                 log_item["erro"] = str(e)
@@ -150,7 +189,6 @@ def parse_emails(username, password, start_date, end_date):
                     except:
                         pass
                 
-                # Centraliza a extração dos XMLs e obtém os logs da consulta
                 xmls_nfe, logs_danfe = extrair_xmls_dos_pdfs(anexos)
                 
                 dados_email = {
@@ -165,7 +203,6 @@ def parse_emails(username, password, start_date, end_date):
                     dados_email.update(resultado_detalhado)
                     relatorio_processamento.append(dados_email)
                 elif is_tubos:
-                    # Exemplo simples adaptado para retornar estrutura compatível
                     resultado_detalhado = {"tipo": "Tubos", "status_umov": "Pendente de Implementação", "xml_enviado": "", "remessa": "", "nfs": [], "peso_total": 0.0}
                     dados_email.update(resultado_detalhado)
                     relatorio_processamento.append(dados_email)
