@@ -1,7 +1,15 @@
 import imaplib
 import email
 from email.header import decode_header
+from email.utils import parsedate_to_datetime
 import datetime
+import os
+import re
+import io
+import requests
+import base64
+import pdfplumber
+
 from pecas import processar_pecas
 from tubos import processar_tubos
 
@@ -18,22 +26,62 @@ def decodificar_texto(texto):
             resultado.append(str(dado))
     return "".join(resultado)
 
+def extrair_xmls_dos_pdfs(anexos):
+    """Lê PDFs em anexo, extrai a chave de acesso e busca o XML na API."""
+    xmls_extraidos = []
+    
+    for anexo in anexos:
+        if anexo["filename"].lower().endswith(".pdf"):
+            try:
+                # Utiliza o pdfplumber com os bytes do anexo
+                with pdfplumber.open(io.BytesIO(anexo["content"])) as pdf:
+                    # Lê apenas a primeira página onde costuma ficar a chave
+                    texto_pagina = pdf.pages[0].extract_text()
+                    
+                    if texto_pagina:
+                        # Limpa espaços e quebras para achar a chave de 44 números
+                        texto_limpo = texto_pagina.replace(" ", "").replace("\n", "")
+                        match = re.search(r'\b\d{44}\b', texto_limpo)
+                        
+                        if match:
+                            chave = match.group(0)
+                            
+                            # Faz a requisição POST para buscar a DANFE
+                            res = requests.post(
+                                'https://consultadanfe.com/api/v1/consulta',
+                                json={'chave': chave},
+                                headers={'Content-Type': 'application/json'},
+                                timeout=15
+                            )
+                            
+                            if res.status_code == 200:
+                                base64_xml = res.text
+                                
+                                # Limpa os caracteres que não pertencem ao Base64 e ajusta o padding
+                                b64_str = re.sub(r'[^A-Za-z0-9+/]', '', base64_xml)
+                                padding = len(b64_str) % 4
+                                if padding:
+                                    b64_str += '=' * (4 - padding)
+                                
+                                # Decodifica o Base64 para string XML
+                                xml_decodificado = base64.b64decode(b64_str).decode('utf-8', errors='ignore')
+                                xmls_extraidos.append(xml_decodificado)
+            except Exception as e:
+                print(f"Erro ao processar PDF {anexo['filename']}: {e}")
+                
+    return xmls_extraidos
+
 def parse_emails(username, password, start_date, end_date):
-    # Configuração padrão do IMAP Locaweb
     IMAP_SERVER = "email-ssl.com.br"
     PORT = 993
     
-    # Conexão segura SSL
     mail = imaplib.IMAP4_SSL(IMAP_SERVER, PORT)
     mail.login(username, password)
     mail.select("INBOX")
     
-    # O IMAP usa formato "DD-Mon-YYYY" (Ex: 29-Jun-2026) e o critério BEFORE é exclusivo.
-    # Adicionamos 1 dia na data final para cobrir o dia selecionado por completo.
     imap_start = start_date.strftime("%d-%b-%Y")
     imap_end = (end_date + datetime.timedelta(days=1)).strftime("%d-%b-%Y")
     
-    # Busca por e-mails no intervalo de datas
     search_criterion = f'(SINCE "{imap_start}" BEFORE "{imap_end}")'
     status, messages = mail.search(None, search_criterion)
     
@@ -44,7 +92,6 @@ def parse_emails(username, password, start_date, end_date):
     email_ids = messages[0].split()
     contador_processados = 0
     
-    # Iterar do mais recente para o mais antigo
     for e_id in reversed(email_ids):
         res, data = mail.fetch(e_id, "(RFC822)")
         if res != "OK":
@@ -54,19 +101,22 @@ def parse_emails(username, password, start_date, end_date):
             if isinstance(response_part, tuple):
                 msg = email.message_from_bytes(response_part[1])
                 
-                # Extração de Metadados
                 assunto = decodificar_texto(msg["Subject"])
                 remetente = decodificar_texto(msg["From"])
                 
-                is_pecas = "Peças" in assunto
-                is_tubos = "Tubos" in assunto
+                # Extraindo a data exata do recebimento do email
+                data_header = msg.get("Date")
+                try:
+                    data_recebimento = parsedate_to_datetime(data_header)
+                except:
+                    data_recebimento = datetime.datetime.now()
                 
-                # Regra solicitada: se nenhum dos nomes for encontrado, interrompe a busca (break)
-                # NOTA: Se preferir ignorar o atual e continuar avaliando os outros, altere para 'continue'.
+                is_pecas = any(palavra in assunto.upper() for palavra in ["PEÇAS", "PECAS"])
+                is_tubos = "TUBOS" in assunto.upper()
+                
                 if not is_pecas and not is_tubos:
                     break
                 
-                # Extração de Corpo e Anexos
                 corpo = ""
                 anexos = []
                 
@@ -75,7 +125,6 @@ def parse_emails(username, password, start_date, end_date):
                         content_type = part.get_content_type()
                         content_disposition = str(part.get("Content-Disposition"))
                         
-                        # Extrai o texto plano do e-mail
                         if content_type == "text/plain" and "attachment" not in content_disposition:
                             try:
                                 charset = part.get_content_charset() or "utf-8"
@@ -83,7 +132,6 @@ def parse_emails(username, password, start_date, end_date):
                             except:
                                 pass
                         
-                        # Captura anexos válidos
                         elif "attachment" in content_disposition or part.get_filename():
                             nome_arquivo = decodificar_texto(part.get_filename())
                             if nome_arquivo:
@@ -99,12 +147,15 @@ def parse_emails(username, password, start_date, end_date):
                     except:
                         pass
                 
-                # Direcionamento baseado na palavra-chave
+                # Centraliza a extração dos XMLs aqui
+                xmls_nfe = extrair_xmls_dos_pdfs(anexos)
+                
+                # Direcionamento com os novos parâmetros
                 if is_pecas:
-                    processar_pecas(assunto, remetente, corpo, anexos)
+                    processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nfe)
                     contador_processados += 1
                 elif is_tubos:
-                    processar_tubos(assunto, remetente, corpo, anexos)
+                    processar_tubos(data_recebimento, assunto, remetente, corpo, anexos, xmls_nfe)
                     contador_processados += 1
                     
     mail.logout()
