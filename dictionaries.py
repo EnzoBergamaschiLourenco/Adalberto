@@ -1,5 +1,5 @@
 MOTORISTA_ID = {
-    "master":""
+    "master":"master"
 }
 
 MOTORISTA_TRANSPORTADORA = {

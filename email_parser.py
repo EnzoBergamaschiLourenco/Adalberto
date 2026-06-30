@@ -27,26 +27,25 @@ def decodificar_texto(texto):
     return "".join(resultado)
 
 def extrair_xmls_dos_pdfs(anexos):
-    """Lê PDFs em anexo, extrai a chave de acesso e busca o XML na API."""
+    """Lê PDFs, extrai a chave de acesso e busca o XML. Retorna (xmls, logs)."""
     xmls_extraidos = []
+    logs_danfe = []
     
     for anexo in anexos:
         if anexo["filename"].lower().endswith(".pdf"):
+            log_item = {"arquivo": anexo["filename"], "chave": "Não encontrada", "status": "Não consultado", "sucesso": False}
             try:
-                # Utiliza o pdfplumber com os bytes do anexo
                 with pdfplumber.open(io.BytesIO(anexo["content"])) as pdf:
-                    # Lê apenas a primeira página onde costuma ficar a chave
                     texto_pagina = pdf.pages[0].extract_text()
                     
                     if texto_pagina:
-                        # Limpa espaços e quebras para achar a chave de 44 números
                         texto_limpo = texto_pagina.replace(" ", "").replace("\n", "")
                         match = re.search(r'\b\d{44}\b', texto_limpo)
                         
                         if match:
                             chave = match.group(0)
+                            log_item["chave"] = chave
                             
-                            # Faz a requisição POST para buscar a DANFE
                             res = requests.post(
                                 'https://consultadanfe.com/api/v1/consulta',
                                 json={'chave': chave},
@@ -54,22 +53,26 @@ def extrair_xmls_dos_pdfs(anexos):
                                 timeout=15
                             )
                             
+                            log_item["status"] = res.status_code
                             if res.status_code == 200:
                                 base64_xml = res.text
-                                
-                                # Limpa os caracteres que não pertencem ao Base64 e ajusta o padding
                                 b64_str = re.sub(r'[^A-Za-z0-9+/]', '', base64_xml)
                                 padding = len(b64_str) % 4
                                 if padding:
                                     b64_str += '=' * (4 - padding)
                                 
-                                # Decodifica o Base64 para string XML
                                 xml_decodificado = base64.b64decode(b64_str).decode('utf-8', errors='ignore')
                                 xmls_extraidos.append(xml_decodificado)
+                                log_item["sucesso"] = True
+                            else:
+                                log_item["erro"] = res.text
             except Exception as e:
-                print(f"Erro ao processar PDF {anexo['filename']}: {e}")
+                log_item["status"] = "Erro interno"
+                log_item["erro"] = str(e)
+            
+            logs_danfe.append(log_item)
                 
-    return xmls_extraidos
+    return xmls_extraidos, logs_danfe
 
 def parse_emails(username, password, start_date, end_date):
     IMAP_SERVER = "email-ssl.com.br"
@@ -85,12 +88,13 @@ def parse_emails(username, password, start_date, end_date):
     search_criterion = f'(SINCE "{imap_start}" BEFORE "{imap_end}")'
     status, messages = mail.search(None, search_criterion)
     
+    relatorio_processamento = []
+    
     if status != "OK" or not messages[0]:
         mail.logout()
-        return 0
+        return relatorio_processamento
         
     email_ids = messages[0].split()
-    contador_processados = 0
     
     for e_id in reversed(email_ids):
         res, data = mail.fetch(e_id, "(RFC822)")
@@ -104,7 +108,6 @@ def parse_emails(username, password, start_date, end_date):
                 assunto = decodificar_texto(msg["Subject"])
                 remetente = decodificar_texto(msg["From"])
                 
-                # Extraindo a data exata do recebimento do email
                 data_header = msg.get("Date")
                 try:
                     data_recebimento = parsedate_to_datetime(data_header)
@@ -147,16 +150,25 @@ def parse_emails(username, password, start_date, end_date):
                     except:
                         pass
                 
-                # Centraliza a extração dos XMLs aqui
-                xmls_nfe = extrair_xmls_dos_pdfs(anexos)
+                # Centraliza a extração dos XMLs e obtém os logs da consulta
+                xmls_nfe, logs_danfe = extrair_xmls_dos_pdfs(anexos)
                 
-                # Direcionamento com os novos parâmetros
+                dados_email = {
+                    "assunto": assunto,
+                    "remetente": remetente,
+                    "data_recebimento": data_recebimento,
+                    "logs_danfe": logs_danfe
+                }
+                
                 if is_pecas:
-                    processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nfe)
-                    contador_processados += 1
+                    resultado_detalhado = processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nfe)
+                    dados_email.update(resultado_detalhado)
+                    relatorio_processamento.append(dados_email)
                 elif is_tubos:
-                    processar_tubos(data_recebimento, assunto, remetente, corpo, anexos, xmls_nfe)
-                    contador_processados += 1
+                    # Exemplo simples adaptado para retornar estrutura compatível
+                    resultado_detalhado = {"tipo": "Tubos", "status_umov": "Pendente de Implementação", "xml_enviado": "", "remessa": "", "nfs": [], "peso_total": 0.0}
+                    dados_email.update(resultado_detalhado)
+                    relatorio_processamento.append(dados_email)
                     
     mail.logout()
-    return contador_processados
+    return relatorio_processamento
