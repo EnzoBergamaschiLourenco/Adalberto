@@ -47,33 +47,27 @@ def extrair_xmls_dos_pdfs(anexos):
         if anexo["filename"].lower().endswith(".pdf"):
             log_item = {"arquivo": anexo["filename"], "chave": "Não encontrada", "status": "Não consultado", "sucesso": False}
             try:
-                # Utiliza o pdfplumber a partir dos bytes da memória
                 with pdfplumber.open(io.BytesIO(anexo["content"])) as pdf:
                     page = pdf.pages[0]
                     
-                    # 1. Renderiza a página para imagem (Lógica do teste.py)
                     imagem = page.to_image(resolution=RESOLUTION)
                     pil = imagem.original.copy()
                     largura, altura = pil.size
                     
-                    # 2. Calcula as coordenadas do retângulo de corte
                     x0 = int(largura * LEFT)
                     y0 = int(altura * TOP)
                     x1 = int(largura * RIGHT)
                     y1 = int(altura * BOTTOM)
                     
-                    # 3. Recorta a área da imagem contendo a chave
                     crop = pil.crop((x0, y0, x1, y1))
                     crop_np = np.array(crop)
                     
-                    # 4. Executa o OCR na imagem recortada
                     resultados = reader.readtext(crop_np)
                     
                     texto_ocr = ""
                     for r in resultados:
                         texto_ocr += " " + r[1]
                     
-                    # 5. Remove tudo que não for número para isolar a chave
                     numeros = re.sub(r"\D", "", texto_ocr)
                     match = re.search(r"\d{44}", numeros)
                     
@@ -81,7 +75,6 @@ def extrair_xmls_dos_pdfs(anexos):
                         chave = match.group(0)
                         log_item["chave"] = chave
                         
-                        # 6. Realiza a consulta com a chave encontrada via OCR
                         res = requests.post(
                             'https://consultadanfe.com/api/v1/consulta',
                             json={'chave': chave},
@@ -91,16 +84,44 @@ def extrair_xmls_dos_pdfs(anexos):
                         
                         log_item["status"] = res.status_code
                         if res.status_code == 200:
-                            base64_xml = res.text
-                            b64_str = re.sub(r'[^A-Za-z0-9+/]', '', base64_xml)
+                            # CORREÇÃO AQUI: 
+                            # Se a API responde com uma string Base64 direta, limpamos caracteres invisíveis usando res.content
+                            base64_xml = res.text.strip()
+                            
+                            # Se a resposta vier envolvida em aspas ou JSON, tratamos aqui:
+                            if base64_xml.startswith('"') and base64_xml.endswith('"'):
+                                base64_xml = base64_xml[1:-1]
+                            
+                            b64_str = re.sub(r'[^A-Za-z0-9+/=]', '', base64_xml)
+                            
+                            # Adiciona padding correto se necessário
                             padding = len(b64_str) % 4
                             if padding:
                                 b64_str += '=' * (4 - padding)
                             
-                            xml_decodificado = base64.b64decode(b64_str).decode('utf-8', errors='ignore')
-                            xmls_extraidos.append(xml_decodificado)
-                            log_item["sucesso"] = True
-                            log_item["xml_conteudo"] = xml_decodificado
+                            # Decodifica de Base64 para Bytes
+                            xml_bytes = base64.b64decode(b64_str)
+                            
+                            # Tenta decodificar como UTF-8 direto. Caso falhe por compactação gzip, trata o erro.
+                            try:
+                                import gzip
+                                # Se o primeiro/segundo byte coincidir com o cabeçalho mágico do GZIP (\x1f\x8b)
+                                if xml_bytes.startswith(b'\x1f\x8b'):
+                                    xml_decodificado = gzip.decompress(xml_bytes).decode('utf-8', errors='ignore')
+                                else:
+                                    xml_decodificado = xml_bytes.decode('utf-8', errors='ignore')
+                            except Exception as gzip_err:
+                                xml_decodificado = xml_bytes.decode('utf-8', errors='ignore')
+                            
+                            # Valida se o XML de fato contém tags válidas
+                            if "<nfeProc" in xml_decodificado or "<infNfe" in xml_decodificado or "<?xml" in xml_decodificado:
+                                xmls_extraidos.append(xml_decodificado)
+                                log_item["sucesso"] = True
+                                log_item["xml_conteudo"] = xml_decodificado
+                            else:
+                                log_item["sucesso"] = False
+                                log_item["status"] = "Erro na estrutura do XML decodificado"
+                                log_item["erro"] = f"Conteúdo inválido gerado: {xml_decodificado[:100]}"
                         else:
                             log_item["erro"] = res.text
                     else:
