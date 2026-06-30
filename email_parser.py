@@ -47,27 +47,33 @@ def extrair_xmls_dos_pdfs(anexos):
         if anexo["filename"].lower().endswith(".pdf"):
             log_item = {"arquivo": anexo["filename"], "chave": "Não encontrada", "status": "Não consultado", "sucesso": False}
             try:
+                # Utiliza o pdfplumber a partir dos bytes da memória
                 with pdfplumber.open(io.BytesIO(anexo["content"])) as pdf:
                     page = pdf.pages[0]
                     
+                    # 1. Renderiza a página para imagem (Lógica do teste.py)
                     imagem = page.to_image(resolution=RESOLUTION)
                     pil = imagem.original.copy()
                     largura, altura = pil.size
                     
+                    # 2. Calcula as coordenadas do retângulo de corte
                     x0 = int(largura * LEFT)
                     y0 = int(altura * TOP)
                     x1 = int(largura * RIGHT)
                     y1 = int(altura * BOTTOM)
                     
+                    # 3. Recorta a área da imagem contendo a chave
                     crop = pil.crop((x0, y0, x1, y1))
                     crop_np = np.array(crop)
                     
+                    # 4. Executa o OCR na imagem recortada
                     resultados = reader.readtext(crop_np)
                     
                     texto_ocr = ""
                     for r in resultados:
                         texto_ocr += " " + r[1]
                     
+                    # 5. Remove tudo que não for número para isolar a chave de 44 dígitos
                     numeros = re.sub(r"\D", "", texto_ocr)
                     match = re.search(r"\d{44}", numeros)
                     
@@ -75,6 +81,7 @@ def extrair_xmls_dos_pdfs(anexos):
                         chave = match.group(0)
                         log_item["chave"] = chave
                         
+                        # 6. Realiza a consulta com a chave encontrada via OCR
                         res = requests.post(
                             'https://consultadanfe.com/api/v1/consulta',
                             json={'chave': chave},
@@ -85,45 +92,32 @@ def extrair_xmls_dos_pdfs(anexos):
                         log_item["status"] = res.status_code
                         if res.status_code == 200:
                             try:
-                                # 1. Converte a resposta bruta para um dicionário Python (JSON)
                                 dados_api = res.json()
+                                # Mapeia exatamente a chave 'xml_base64' confirmada pelo seu JS
+                                base64_xml = dados_api.get("xml_base64")
                                 
-                                # 2. Tenta buscar a propriedade do XML ou do PDF na resposta
-                                # Nota: Se a API retornar 'xml_base64', mude o termo abaixo.
-                                base64_chave = dados_api.get("pdf_base64") or dados_api.get("xml_base64")
-                                
-                                if base64_chave:
-                                    # Limpa caracteres invisíveis ou quebras de linha
-                                    b64_str = re.sub(r'[^A-Za-z0-9+/=]', '', base64_chave)
-                                    
-                                    # Corrige o padding do Base64 se necessário
+                                if base64_xml:
+                                    # Limpa caracteres não-base64 por segurança
+                                    b64_str = re.sub(r'[^A-Za-z0-9+/=]', '', base64_xml)
                                     padding = len(b64_str) % 4
                                     if padding:
                                         b64_str += '=' * (4 - padding)
                                     
-                                    # 3. Decodifica o Base64 para bytes
+                                    # Decodifica de Base64 para string UTF-8 limpa (Equivalente ao decodeURIComponent do seu JS)
                                     xml_bytes = base64.b64decode(b64_str)
+                                    xml_decodificado = xml_bytes.decode('utf-8', errors='ignore')
                                     
-                                    # 4. Trata possível compactação GZIP
-                                    import gzip
-                                    if xml_bytes.startswith(b'\x1f\x8b'):
-                                        xml_decodificado = gzip.decompress(xml_bytes).decode('utf-8', errors='ignore')
-                                    else:
-                                        xml_decodificado = xml_bytes.decode('utf-8', errors='ignore')
-                                    
-                                    # 5. Salva se for um XML válido ou texto populado
                                     xmls_extraidos.append(xml_decodificado)
                                     log_item["sucesso"] = True
                                     log_item["xml_conteudo"] = xml_decodificado
                                 else:
                                     log_item["sucesso"] = False
-                                    log_item["status"] = "JSON sem campo base64"
-                                    log_item["erro"] = f"Campos recebidos: {list(dados_api.keys())}"
-                                    
-                            except Exception as json_err:
+                                    log_item["status"] = "xml_base64 ausente na resposta"
+                                    log_item["erro"] = f"Chaves recebidas: {list(dados_api.keys())}"
+                            except Exception as parse_err:
                                 log_item["sucesso"] = False
-                                log_item["status"] = "Erro ao ler JSON da API"
-                                log_item["erro"] = str(json_err)
+                                log_item["status"] = "Erro ao tratar JSON/Base64"
+                                log_item["erro"] = str(parse_err)
                         else:
                             log_item["erro"] = res.text
                     else:
