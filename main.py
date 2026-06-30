@@ -66,6 +66,10 @@ if email and password:
                                         st.markdown(f"- Arquivo: `{log_df['arquivo']}`")
                                         st.markdown(f"  - Chave: `{log_df['chave']}`")
                                         st.markdown(f"  - Status API: :{status_cor}[{log_df['status']}]")
+
+                                        if log_df["sucesso"] and "xml_conteudo" in log_df:
+                                            with st.expander(f"📄 Ver XML Recebido ({log_df['arquivo']})"):
+                                                st.code(log_df["xml_conteudo"], language="xml")
                                         
                                     st.markdown("---")
                                     st.markdown("**2. Envio Umov.me:**")

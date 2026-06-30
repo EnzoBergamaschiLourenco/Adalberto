@@ -100,6 +100,7 @@ def extrair_xmls_dos_pdfs(anexos):
                             xml_decodificado = base64.b64decode(b64_str).decode('utf-8', errors='ignore')
                             xmls_extraidos.append(xml_decodificado)
                             log_item["sucesso"] = True
+                            log_item["xml_conteudo"] = xml_decodificado
                         else:
                             log_item["erro"] = res.text
                     else:
