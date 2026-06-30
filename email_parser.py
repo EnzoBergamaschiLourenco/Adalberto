@@ -84,44 +84,46 @@ def extrair_xmls_dos_pdfs(anexos):
                         
                         log_item["status"] = res.status_code
                         if res.status_code == 200:
-                            # CORREÇÃO AQUI: 
-                            # Se a API responde com uma string Base64 direta, limpamos caracteres invisíveis usando res.content
-                            base64_xml = res.text.strip()
-                            
-                            # Se a resposta vier envolvida em aspas ou JSON, tratamos aqui:
-                            if base64_xml.startswith('"') and base64_xml.endswith('"'):
-                                base64_xml = base64_xml[1:-1]
-                            
-                            b64_str = re.sub(r'[^A-Za-z0-9+/=]', '', base64_xml)
-                            
-                            # Adiciona padding correto se necessário
-                            padding = len(b64_str) % 4
-                            if padding:
-                                b64_str += '=' * (4 - padding)
-                            
-                            # Decodifica de Base64 para Bytes
-                            xml_bytes = base64.b64decode(b64_str)
-                            
-                            # Tenta decodificar como UTF-8 direto. Caso falhe por compactação gzip, trata o erro.
                             try:
-                                import gzip
-                                # Se o primeiro/segundo byte coincidir com o cabeçalho mágico do GZIP (\x1f\x8b)
-                                if xml_bytes.startswith(b'\x1f\x8b'):
-                                    xml_decodificado = gzip.decompress(xml_bytes).decode('utf-8', errors='ignore')
+                                # 1. Converte a resposta bruta para um dicionário Python (JSON)
+                                dados_api = res.json()
+                                
+                                # 2. Tenta buscar a propriedade do XML ou do PDF na resposta
+                                # Nota: Se a API retornar 'xml_base64', mude o termo abaixo.
+                                base64_chave = dados_api.get("pdf_base64") or dados_api.get("xml_base64")
+                                
+                                if base64_chave:
+                                    # Limpa caracteres invisíveis ou quebras de linha
+                                    b64_str = re.sub(r'[^A-Za-z0-9+/=]', '', base64_chave)
+                                    
+                                    # Corrige o padding do Base64 se necessário
+                                    padding = len(b64_str) % 4
+                                    if padding:
+                                        b64_str += '=' * (4 - padding)
+                                    
+                                    # 3. Decodifica o Base64 para bytes
+                                    xml_bytes = base64.b64decode(b64_str)
+                                    
+                                    # 4. Trata possível compactação GZIP
+                                    import gzip
+                                    if xml_bytes.startswith(b'\x1f\x8b'):
+                                        xml_decodificado = gzip.decompress(xml_bytes).decode('utf-8', errors='ignore')
+                                    else:
+                                        xml_decodificado = xml_bytes.decode('utf-8', errors='ignore')
+                                    
+                                    # 5. Salva se for um XML válido ou texto populado
+                                    xmls_extraidos.append(xml_decodificado)
+                                    log_item["sucesso"] = True
+                                    log_item["xml_conteudo"] = xml_decodificado
                                 else:
-                                    xml_decodificado = xml_bytes.decode('utf-8', errors='ignore')
-                            except Exception as gzip_err:
-                                xml_decodificado = xml_bytes.decode('utf-8', errors='ignore')
-                            
-                            # Valida se o XML de fato contém tags válidas
-                            if "<nfeProc" in xml_decodificado or "<infNfe" in xml_decodificado or "<?xml" in xml_decodificado:
-                                xmls_extraidos.append(xml_decodificado)
-                                log_item["sucesso"] = True
-                                log_item["xml_conteudo"] = xml_decodificado
-                            else:
+                                    log_item["sucesso"] = False
+                                    log_item["status"] = "JSON sem campo base64"
+                                    log_item["erro"] = f"Campos recebidos: {list(dados_api.keys())}"
+                                    
+                            except Exception as json_err:
                                 log_item["sucesso"] = False
-                                log_item["status"] = "Erro na estrutura do XML decodificado"
-                                log_item["erro"] = f"Conteúdo inválido gerado: {xml_decodificado[:100]}"
+                                log_item["status"] = "Erro ao ler JSON da API"
+                                log_item["erro"] = str(json_err)
                         else:
                             log_item["erro"] = res.text
                     else:
