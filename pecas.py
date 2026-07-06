@@ -45,7 +45,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     now = datetime.now()
     time_three_hours_ago = now - timedelta(hours=3)
     hour_formatted = time_three_hours_ago.strftime("%H:%M")
-    data_formatada = data_recebimento.strftime("%d/%m/%Y")
+    data_formatada = data_recebimento.strftime("%Y-%m-%d")
     
     tag_baixa_manual = ""
     if now.date() > data_recebimento.date():
