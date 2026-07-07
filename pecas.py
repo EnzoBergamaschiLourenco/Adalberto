@@ -16,7 +16,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     transportadora = ""
     assunto_lower = assunto.lower()
     
-    # Identificação por assunto (Lógica original)
+    # Identificação por assunto
     for motorista, m_id in MOTORISTA_ID.items():
         if motorista.lower() in assunto_lower:
             agent_id = m_id
@@ -34,29 +34,37 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     peso_total = 0.0
     
     for xml_content in xmls_nfe:
-        match_nf = re.search(r'<nNF>(\d+)</nNF>', xml_content)
+        # Pega notas fiscais ignorando namespaces e maiúsculas/minúsculas
+        match_nf = re.search(r'<(?:\w+:)?nNF>(\d+)</(?:\w+:)?nNF>', xml_content, re.IGNORECASE)
         if match_nf:
             notas_fiscais.append(match_nf.group(1))
             
-        match_peso = re.search(r'<pesoB>([\d\.]+)</pesoB>', xml_content)
+        # Pega peso ignorando namespaces
+        match_peso = re.search(r'<(?:\w+:)?pesoB>([\d\.]+)</(?:\w+:)?pesoB>', xml_content, re.IGNORECASE)
         if match_peso:
             peso_total += float(match_peso.group(1))
             
-        # CORREÇÃO 1: Buscar o CNPJ especificamente dentro do bloco do Destinatário (<dest>)
-        match_cnpj = re.search(r'<dest>.*?<CNPJ>(\d+)</CNPJ>', xml_content, re.DOTALL)
-        if match_cnpj:
-            cnpj = match_cnpj.group(1)
-            # CORREÇÃO 2: Compara considerando ou não o zero à esquerda do dicionário
+        # NOVA ESTRATÉGIA CNPJ: Pega todos os CNPJs do XML e cruza com o dicionário
+        todos_cnpjs = re.findall(r'<(?:\w+:)?CNPJ[^>]*>(\d+)</(?:\w+:)?CNPJ>', xml_content, re.IGNORECASE)
+        for cnpj in todos_cnpjs:
+            cnpj_limpo = cnpj.lstrip('0')
+            # Verifica com e sem o zero à esquerda
             if cnpj in CNPJ_SERVICELOCAL:
                 service_local_id = CNPJ_SERVICELOCAL[cnpj]
-            elif cnpj.lstrip('0') in CNPJ_SERVICELOCAL:
-                service_local_id = CNPJ_SERVICELOCAL[cnpj.lstrip('0')]
+                break
+            elif cnpj_limpo in CNPJ_SERVICELOCAL:
+                service_local_id = CNPJ_SERVICELOCAL[cnpj_limpo]
+                break
                 
-        # CORREÇÃO 3: Se a transportadora não foi definida pelo assunto, extrai do XML (<transporta>)
+        # NOVA ESTRATÉGIA TRANSPORTADORA: Ignora namespaces, atributos extras e case
         if not transportadora:
-            match_transp = re.search(r'<transporta>.*?<xNome>(.*?)</xNome>', xml_content, re.DOTALL)
+            match_transp = re.search(
+                r'<(?:\w+:)?transporta[^>]*>.*?<(?:\w+:)?xNome[^>]*>(.*?)</(?:\w+:)?xNome>', 
+                xml_content, 
+                re.IGNORECASE | re.DOTALL
+            )
             if match_transp:
-                transportadora = match_transp.group(1)
+                transportadora = match_transp.group(1).strip()
 
     str_nfs = ", ".join(notas_fiscais) if notas_fiscais else "Nenhuma"
 
@@ -101,7 +109,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     resposta_umov = ""
     
     try:
-        res = requests.post(url, data=body_data, headers=headers, timeout=60)
+        res = requests.post(url, data=body_data, headers=headers, timeout=15)
         status_umov = f"HTTP {res.status_code}"
         resposta_umov = res.text
     except Exception as e:
