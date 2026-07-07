@@ -14,6 +14,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     agent_id = ""
     service_local_id = ""
     transportadora = ""
+    situation = "30"  # Situação padrão
     assunto_lower = assunto.lower()
     
     # Identificação por assunto
@@ -82,6 +83,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     tag_baixa_manual = ""
     if now.date() > data_recebimento.date():
         tag_baixa_manual = "<BaixaManual>Sim</BaixaManual>"
+        situation="50"
 
     xml_payload = f"""<schedule>
         <agent><id>{agent_id}</id></agent>
@@ -89,7 +91,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
         <activitiesOrigin>7</activitiesOrigin>
         <date>{data_formatada}</date>
         <hour>{hour_formatted}</hour>
-        <situation><id>30</id></situation>
+        <situation><id>{situation}</id></situation>
         <customFields>
             <Remessa>{remessa}</Remessa>
             <NF>{str_nfs}</NF>
