@@ -45,14 +45,20 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
             peso_total += float(match_peso.group(1))
             
         # NOVA ESTRATÉGIA CNPJ: Pega todos os CNPJs do XML e cruza com o dicionário
-        todos_cnpjs = re.findall(r'<(?:\w+:)?CNPJ[^>]*>(\d+)</(?:\w+:)?CNPJ>', xml_content, re.IGNORECASE)
+        todos_cnpjs = re.findall(
+                r'<(?:\w+:)?CNPJ[^>]*>\s*([\d]+)\s*</(?:\w+:)?CNPJ>',
+                xml_content,
+                re.IGNORECASE | re.DOTALL
+            )
         for cnpj in todos_cnpjs:
-            cnpj_limpo = cnpj.lstrip('0')
-            # Verifica com e sem o zero à esquerda
+            cnpj = re.sub(r'\D', '', cnpj)
+            cnpj_limpo = cnpj.lstrip("0")
+
             if cnpj in CNPJ_SERVICELOCAL:
                 service_local_id = CNPJ_SERVICELOCAL[cnpj]
                 break
-            elif cnpj_limpo in CNPJ_SERVICELOCAL:
+
+            if cnpj_limpo in CNPJ_SERVICELOCAL:
                 service_local_id = CNPJ_SERVICELOCAL[cnpj_limpo]
                 break
                 
