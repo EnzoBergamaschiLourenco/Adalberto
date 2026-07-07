@@ -90,7 +90,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
         <date>{data_formatada}</date>
         <hour>{hour_formatted}</hour>
         <customFields>
-            <Remessa>{remessa}</Remessa>
+            <CF_Remessa>{remessa}</CF_Remessa>
             <NF>{str_nfs}</NF>
             <Peso>{peso_total:.2f}</Peso>
             <transportadora>{transportadora}</transportadora>
