@@ -3,7 +3,7 @@ MOTORISTA_ID = {
 }
 
 MOTORISTA_TRANSPORTADORA = {
-    "master":""
+    "master":"teste"
 }
 
 CNPJ_SERVICELOCAL = {

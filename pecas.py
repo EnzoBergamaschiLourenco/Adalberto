@@ -16,6 +16,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     transportadora = ""
     assunto_lower = assunto.lower()
     
+    # Identificação por assunto (Lógica original)
     for motorista, m_id in MOTORISTA_ID.items():
         if motorista.lower() in assunto_lower:
             agent_id = m_id
@@ -41,11 +42,21 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
         if match_peso:
             peso_total += float(match_peso.group(1))
             
-        match_cnpj = re.search(r'<CNPJ>(\d+)</CNPJ>', xml_content)
+        # CORREÇÃO 1: Buscar o CNPJ especificamente dentro do bloco do Destinatário (<dest>)
+        match_cnpj = re.search(r'<dest>.*?<CNPJ>(\d+)</CNPJ>', xml_content, re.DOTALL)
         if match_cnpj:
             cnpj = match_cnpj.group(1)
+            # CORREÇÃO 2: Compara considerando ou não o zero à esquerda do dicionário
             if cnpj in CNPJ_SERVICELOCAL:
                 service_local_id = CNPJ_SERVICELOCAL[cnpj]
+            elif cnpj.lstrip('0') in CNPJ_SERVICELOCAL:
+                service_local_id = CNPJ_SERVICELOCAL[cnpj.lstrip('0')]
+                
+        # CORREÇÃO 3: Se a transportadora não foi definida pelo assunto, extrai do XML (<transporta>)
+        if not transportadora:
+            match_transp = re.search(r'<transporta>.*?<xNome>(.*?)</xNome>', xml_content, re.DOTALL)
+            if match_transp:
+                transportadora = match_transp.group(1)
 
     str_nfs = ", ".join(notas_fiscais) if notas_fiscais else "Nenhuma"
 
@@ -97,7 +108,6 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
         status_umov = "Erro de Conexão"
         resposta_umov = str(e)
         
-    # Retorna o compilado com todas as informações tratadas e respostas das APIs
     return {
         "tipo": "Peças",
         "remessa": remessa,
