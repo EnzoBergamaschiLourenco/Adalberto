@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import requests
 import streamlit as st
 
-from dictionaries import MOTORISTA_ID, MOTORISTA_TRANSPORTADORA
+from dictionaries import MOTORISTA_ID, MOTORISTA_TRANSPORTADORA, CNPJ_SERVICELOCAL
 
 def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nfe):
     """
@@ -13,6 +13,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     """
     agent_id = ""
     service_local_id = ""
+    transportadora = ""
     assunto_lower = assunto.lower()
     
     for motorista, m_id in MOTORISTA_ID.items():
@@ -22,7 +23,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
             
     for motorista, transp_id in MOTORISTA_TRANSPORTADORA.items():
         if motorista.lower() in assunto_lower:
-            service_local_id = transp_id
+            transportadora = transp_id
             break
 
     match_remessa = re.search(r'(?i)remessas?\s*(\d{8})', corpo)
@@ -39,6 +40,12 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
         match_peso = re.search(r'<pesoB>([\d\.]+)</pesoB>', xml_content)
         if match_peso:
             peso_total += float(match_peso.group(1))
+            
+        match_cnpj = re.search(r'<CNPJ>(\d+)</CNPJ>', xml_content)
+        if match_cnpj:
+            cnpj = match_cnpj.group(1)
+            if cnpj in CNPJ_SERVICELOCAL:
+                service_local_id = CNPJ_SERVICELOCAL[cnpj]
 
     str_nfs = ", ".join(notas_fiscais) if notas_fiscais else "Nenhuma"
 
@@ -62,6 +69,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
             <Remessa>{remessa}</Remessa>
             <NF>{str_nfs}</NF>
             <Peso>{peso_total:.2f}</Peso>
+            <transportadora>{transportadora}</transportadora>
             {tag_baixa_manual}
         </customFields>
         <scheduleType>
@@ -97,6 +105,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
         "peso_total": round(peso_total, 3),
         "agent_id": agent_id,
         "service_local_id": service_local_id,
+        "transportadora": transportadora,
         "xml_enviado": xml_payload,
         "status_umov": status_umov,
         "resposta_umov": resposta_umov
