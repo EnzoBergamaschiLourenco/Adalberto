@@ -59,31 +59,59 @@ if email and password:
                                     st.markdown("#### 🌐 Requisições e Integrações")
                                     
                                     st.markdown("**1. Consulta DANFE (PDF para XML):**")
-                                    if not rel["logs_danfe"]:
+                                    if not rel.get("logs_danfe"):
                                         st.caption("Nenhum anexo PDF processado para este e-mail.")
-                                    for log_df in rel["logs_danfe"]:
-                                        status_cor = "green" if log_df["sucesso"] else "red"
-                                        st.markdown(f"- Arquivo: `{log_df['arquivo']}`")
-                                        st.markdown(f"  - Chave: `{log_df['chave']}`")
-                                        st.markdown(f"  - Status API: :{status_cor}[{log_df['status']}]")
+                                    else:
+                                        for log_df in rel["logs_danfe"]:
+                                            status_cor = "green" if log_df["sucesso"] else "red"
+                                            st.markdown(f"- Arquivo: `{log_df['arquivo']}`")
+                                            st.markdown(f"  - Chave: `{log_df['chave']}`")
+                                            st.markdown(f"  - Status API: :{status_cor}[{log_df['status']}]")
 
-                                        if log_df["sucesso"] and "xml_conteudo" in log_df:
-                                            with st.expander(f"📄 Ver XML Recebido ({log_df['arquivo']})"):
-                                                st.code(log_df["xml_conteudo"], language="xml")
+                                            if log_df["sucesso"] and "xml_conteudo" in log_df:
+                                                with st.expander(f"📄 Ver XML Recebido ({log_df['arquivo']})"):
+                                                    st.code(log_df["xml_conteudo"], language="xml")
                                         
                                     st.markdown("---")
-                                    st.markdown("**2. Envio Umov.me:**")
+                                    st.markdown("**2. Envio Umov.me (Criação):**")
                                     st.write(f"**Status do Envio:** `{rel.get('status_umov', 'N/A')}`")
                                     
-                                # Se houver payload XML gerado, exibe de forma limpa abaixo
-                                if rel.get("xml_enviado"):
-                                    st.markdown("#### 📄 XML Payload enviado ao Umov.me")
-                                    st.code(rel["xml_enviado"], language="xml")
-                                    
-                                if rel.get("resposta_umov"):
-                                    with st.get_container() if hasattr(st, "get_container") else st.container():
-                                        st.caption("**Resposta brute do servidor Umov.me:**")
-                                        st.text(rel["resposta_umov"][:500] + "..." if len(rel["resposta_umov"]) > 500 else rel["resposta_umov"])
+                                    # Se houver payload XML gerado, exibe de forma limpa abaixo
+                                    if rel.get("xml_enviado"):
+                                        st.markdown("#### 📄 XML Payload (POST Schedule)")
+                                        st.code(rel["xml_enviado"], language="xml")
+                                        
+                                    if rel.get("resposta_umov"):
+                                        with st.get_container() if hasattr(st, "get_container") else st.container():
+                                            st.caption("**Resposta bruta do servidor Umov.me:**")
+                                            st.text(rel["resposta_umov"][:500] + "..." if len(rel["resposta_umov"]) > 500 else rel["resposta_umov"])
+
+                                    # =========================================================
+                                    # NOVA SEÇÃO: Exibir chamadas subsequentes (GET e POSTs)
+                                    # =========================================================
+                                    if rel.get("logs_umov_extra") and len(rel["logs_umov_extra"]) > 0:
+                                        st.markdown("---")
+                                        st.markdown("**3. Atualizações Umov.me (Baixa Manual):**")
+                                        
+                                        for i, log_extra in enumerate(rel["logs_umov_extra"]):
+                                            metodo = log_extra.get('metodo', 'HTTP')
+                                            status = log_extra.get('status', 'N/A')
+                                            status_cor = "green" if str(status).startswith("2") else "red"
+                                            
+                                            st.markdown(f"**Chamada {i + 1} - `{metodo}`**")
+                                            st.caption(f"URL: `{log_extra.get('url', '')}`")
+                                            st.markdown(f"Status API: :{status_cor}[{status}]")
+                                            
+                                            if log_extra.get("payload"):
+                                                with st.expander("📄 Ver Payload XML"):
+                                                    st.code(log_extra["payload"], language="xml")
+                                                    
+                                            if log_extra.get("resposta"):
+                                                with st.expander("Ver Resposta do Servidor"):
+                                                    resp_text = log_extra["resposta"]
+                                                    st.text(resp_text[:500] + "..." if len(resp_text) > 500 else resp_text)
+                                            st.write("") # Espaçamento entre as chamadas
+
                 except Exception as e:
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
     else:

@@ -15,6 +15,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     service_local_id = ""
     transportadora = ""
     assunto_lower = assunto.lower()
+    teveBaixaManual = False
     
     # Identificação por assunto
     for motorista, m_id in MOTORISTA_ID.items():
@@ -81,7 +82,8 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     
     tag_baixa_manual = ""
     if now.date() > data_recebimento.date():
-        tag_baixa_manual = "<BaixaManual>1</BaixaManual>"
+        tag_baixa_manual = "<BaixaManual><alternativeIdentifier>1</alternativeIdentifier></BaixaManual>"
+        teveBaixaManual = True
 
     xml_payload = f"""<schedule>
         <agent><id>{agent_id}</id></agent>
@@ -112,7 +114,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
 
     status_umov = "Não Enviado"
     resposta_umov = ""
-    
+
     try:
         res = requests.post(url, data=body_data, headers=headers, timeout=15)
         status_umov = f"HTTP {res.status_code}"
@@ -120,36 +122,37 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     except Exception as e:
         status_umov = "Erro de Conexão"
         resposta_umov = str(e)
-        
-    # =====================================================================
-    # NOVA LÓGICA: Buscar e atualizar Schedules com BaixaManual=Sim
-    # =====================================================================
-    if api_key != "CHAVE_NAO_ENCONTRADA":
-        url_get = f"https://tuberfil.umov.me/CenterWeb/api/{api_key}/schedule.xml?BaixaManual=1"
-        try:
-            # 1. Faz o GET para pegar os registros
-            res_get = requests.get(url_get, timeout=15)
-            
-            if res_get.status_code == 200:
-                # Extrai todos os IDs numéricos usando regex
-                ids_encontrados = re.findall(r'<entry\s+id="(\d+)"', res_get.text, re.IGNORECASE)
+
+    if(teveBaixaManual):
+        # =====================================================================
+        # NOVA LÓGICA: Buscar e atualizar Schedules com a mesma NF
+        # =====================================================================
+        if api_key != "CHAVE_NAO_ENCONTRADA":
+            url_get = f"https://tuberfil.umov.me/CenterWeb/api/{api_key}/schedule.xml?NF={str_nfs}"
+            try:
+                # 1. Faz o GET para pegar os registros
+                res_get = requests.get(url_get, timeout=15)
                 
-                # Monta o payload de atualização apenas uma vez
-                xml_atualizacao = """<schedule>\n<situation><id>50</id></situation>\n</schedule>"""
-                body_atualizacao = 'data=' + urllib.parse.quote(xml_atualizacao)
-                
-                # 2. Faz o POST para cada ID encontrado
-                for schedule_id in ids_encontrados:
-                    url_post_atualizacao = f"https://tuberfil.umov.me/CenterWeb/api/{api_key}/schedule/{schedule_id}.xml"
-                    requests.post(url_post_atualizacao, data=body_atualizacao, headers=headers, timeout=15)
+                if res_get.status_code == 200:
+                    # Extrai todos os IDs numéricos usando regex
+                    ids_encontrados = re.findall(r'<entry\s+id="(\d+)"', res_get.text, re.IGNORECASE)
                     
-        except Exception as e:
-            # Em caso de falha nesta rotina secundária, evitamos travar a execução principal.
-            # O log de erro pode ser adicionado aqui, se necessário.
-            pass
-    # =====================================================================
-    # FIM DA NOVA LÓGICA
-    # =====================================================================
+                    # Monta o payload de atualização apenas uma vez
+                    xml_atualizacao = """<schedule>\n<situation><id>50</id></situation>\n</schedule>"""
+                    body_atualizacao = 'data=' + urllib.parse.quote(xml_atualizacao)
+                    
+                    # 2. Faz o POST para cada ID encontrado
+                    for schedule_id in ids_encontrados:
+                        url_post_atualizacao = f"https://tuberfil.umov.me/CenterWeb/api/{api_key}/schedule/{schedule_id}.xml"
+                        requests.post(url_post_atualizacao, data=body_atualizacao, headers=headers, timeout=15)
+                        
+            except Exception as e:
+                # Em caso de falha nesta rotina secundária, evitamos travar a execução principal.
+                # O log de erro pode ser adicionado aqui, se necessário.
+                pass
+        # =====================================================================
+        # FIM DA NOVA LÓGICA
+        # =====================================================================
         
     return {
         "tipo": "Peças",
