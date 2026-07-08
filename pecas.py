@@ -81,7 +81,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     
     tag_baixa_manual = ""
     if now.date() > data_recebimento.date():
-        tag_baixa_manual = "<BaixaManual>Sim</BaixaManual>"
+        tag_baixa_manual = "<BaixaManual>1</BaixaManual>"
 
     xml_payload = f"""<schedule>
         <agent><id>{agent_id}</id></agent>
@@ -125,7 +125,7 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     # NOVA LÓGICA: Buscar e atualizar Schedules com BaixaManual=Sim
     # =====================================================================
     if api_key != "CHAVE_NAO_ENCONTRADA":
-        url_get = f"https://tuberfil.umov.me/CenterWeb/api/{api_key}/schedule.xml?BaixaManual=Sim"
+        url_get = f"https://tuberfil.umov.me/CenterWeb/api/{api_key}/schedule.xml?BaixaManual=1"
         try:
             # 1. Faz o GET para pegar os registros
             res_get = requests.get(url_get, timeout=15)
