@@ -94,7 +94,6 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
             <NF>{str_nfs}</NF>
             <Peso>{peso_total:.2f}</Peso>
             <transportadora>{transportadora}</transportadora>
-            {tag_baixa_manual}
         </customFields>
         <scheduleType>
             <id>96897</id>
