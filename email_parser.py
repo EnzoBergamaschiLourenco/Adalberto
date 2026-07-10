@@ -207,6 +207,7 @@ def parse_emails(username, password, start_date, end_date):
                     except:
                         pass
                 
+                # Extração comum de XMLs a partir dos PDFs anexados
                 xmls_nfe, logs_danfe = extrair_xmls_dos_pdfs(anexos)
                 
                 dados_email = {
@@ -221,7 +222,8 @@ def parse_emails(username, password, start_date, end_date):
                     dados_email.update(resultado_detalhado)
                     relatorio_processamento.append(dados_email)
                 elif is_tubos:
-                    resultado_detalhado = {"tipo": "Tubos", "status_umov": "Pendente de Implementação", "xml_enviado": "", "remessa": "", "nfs": [], "peso_total": 0.0}
+                    # Executa o processamento completo de tubos integrado com as chamadas Umov.me
+                    resultado_detalhado = processar_tubos(data_recebimento, assunto, remetente, corpo, anexos, xmls_nfe)
                     dados_email.update(resultado_detalhado)
                     relatorio_processamento.append(dados_email)
                     
