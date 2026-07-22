@@ -139,33 +139,33 @@ with col_dir:
             else:
                 with st.spinner("Conectando ao webmail UOL e triando mensagens..."):
                     try:
-                        relatorios = parse_emails(email_input, password, start_date, end_date)
-                        
-                        if not relatorios:
-                            st.info("Nenhum e-mail de Peças ou Tubos encontrado no período selecionado.")
-                        else:
-                            st.success(f"Concluído! {len(relatorios)} e-mail(s) processados.")
-                            
-                            st.markdown("### 📋 Auditoria")
-                            for idx, rel in enumerate(relatorios):
-                                titulo_aba = f"[{rel.get('tipo', 'N/A')}] {rel['assunto']}"
-                                
-                                with st.expander(titulo_aba):
-                                    st.write(f"**Remetente:** {rel['remetente']}")
-                                    st.write(f"**ID Transportadora:** {rel.get('service_local_id', 'Não identificado')}")
-                                    
-                                    # Exibição resumida dos logs para caber bem na coluna
-                                    if rel.get("logs_danfe"):
-                                        st.markdown("**Consulta DANFE:**")
-                                        for log_df in rel["logs_danfe"]:
-                                            st.caption(f"Status: {log_df['status']} | Chave: {log_df['chave']}")
-                                            
-                                    if rel.get("resposta_umov"):
-                                        st.markdown("**Retorno Umov.me:**")
-                                        resp = str(rel["resposta_umov"])
-                                        st.caption(resp[:200] + "..." if len(resp) > 200 else resp)
-                                        
+                        relatorios = parse_emails(email_input, password, start_date, end_date)           
                     except Exception as e:
                         st.error(f"Erro durante o processamento: {e}")
     else:
         st.info("Selecione a data de início e fim no calendário.")
+        
+if not relatorios:
+    st.info("Nenhum e-mail de Peças ou Tubos encontrado no período selecionado.")
+else:
+    st.success(f"Concluído! {len(relatorios)} e-mail(s) processados.")
+    
+    st.markdown("### 📋 Auditoria")
+    for idx, rel in enumerate(relatorios):
+        titulo_aba = f"[{rel.get('tipo', 'N/A')}] {rel['assunto']}"
+        
+        with st.expander(titulo_aba):
+            st.write(f"**Remetente:** {rel['remetente']}")
+            st.write(f"**ID Transportadora:** {rel.get('service_local_id', 'Não identificado')}")
+            
+            # Exibição resumida dos logs para caber bem na coluna
+            if rel.get("logs_danfe"):
+                st.markdown("**Consulta DANFE:**")
+                for log_df in rel["logs_danfe"]:
+                    st.caption(f"Status: {log_df['status']} | Chave: {log_df['chave']}")
+                    
+            if rel.get("resposta_umov"):
+                st.markdown("**Retorno Umov.me:**")
+                resp = str(rel["resposta_umov"])
+                st.caption(resp[:200] + "..." if len(resp) > 200 else resp)
+        
