@@ -1,11 +1,7 @@
-MOTORISTA_ID = { #motorista com nome no assunto do email - id interno do agente umovme 
-    "master":"1243673"
-}
-
 MOTORISTA_TRANSPORTADORA = { #motorista com nome no assunto do email - texto com nome da transportadora
-    "master":"teste"
+    "master":"transp teste"
 }
 
-CNPJ_SERVICELOCAL = { #cnpj do recebedor do serviço, extraído da nota fiscal - id interno do service local umovme
-    "1511345000172": "218927178"
+CNPJ_SERVICELOCAL = { #cnpj do recebedor do serviço, extraído da nota fiscal - alternativeIdentifier (codigo de integração) local umovme
+    "1511345000172": "101947"
 }

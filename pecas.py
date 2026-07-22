@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import requests
 import streamlit as st
 
-from dictionaries import MOTORISTA_ID, MOTORISTA_TRANSPORTADORA, CNPJ_SERVICELOCAL
+from dictionaries import MOTORISTA_TRANSPORTADORA, CNPJ_SERVICELOCAL
 
 def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nfe):
     """
@@ -18,10 +18,8 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
     teveBaixaManual = False
     
     # Identificação por assunto
-    for motorista, m_id in MOTORISTA_ID.items():
-        if motorista.lower() in assunto_lower:
-            agent_id = m_id
-            break
+    if motorista:
+        agent_id = motorista
             
     for motorista, transp_id in MOTORISTA_TRANSPORTADORA.items():
         if motorista.lower() in assunto_lower:
@@ -86,8 +84,8 @@ def processar_pecas(data_recebimento, assunto, remetente, corpo, anexos, xmls_nf
         teveBaixaManual = True
 
     xml_payload = f"""<schedule>
-        <agent><id>{agent_id}</id></agent>
-        <serviceLocal><id>{service_local_id}</id></serviceLocal>
+        <agent><alternativeIdentifier>{agent_id}</alternativeIdentifier></agent>
+        <serviceLocal><alternativeIdentifier>{service_local_id}</alternativeIdentifier></serviceLocal>
         <activitiesOrigin>7</activitiesOrigin>
         <date>{data_formatada}</date>
         <hour>{hour_formatted}</hour>

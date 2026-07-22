@@ -132,12 +132,14 @@ def extrair_xmls_dos_pdfs(anexos):
     return xmls_extraidos, logs_danfe
 
 def parse_emails(username, password, start_date, end_date):
-    IMAP_SERVER = "email-ssl.com.br"
+    IMAP_SERVER = "imap.uol.com.br"
     PORT = 993
     
     mail = imaplib.IMAP4_SSL(IMAP_SERVER, PORT)
     mail.login(username, password)
     mail.select("INBOX")
+    
+    # ... resto da função permanece igual ...
     
     imap_start = start_date.strftime("%d-%b-%Y")
     imap_end = (end_date + datetime.timedelta(days=1)).strftime("%d-%b-%Y")
