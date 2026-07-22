@@ -132,7 +132,7 @@ def extrair_xmls_dos_pdfs(anexos):
     return xmls_extraidos, logs_danfe
 
 def parse_emails(username, password, start_date, end_date):
-    IMAP_SERVER = "imap.uol.com.br"
+    IMAP_SERVER = "imap.uhserver.com"
     PORT = 993
     
     mail = imaplib.IMAP4_SSL(IMAP_SERVER, PORT)
